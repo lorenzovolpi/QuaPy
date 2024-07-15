@@ -124,7 +124,7 @@ class AbstractStochasticSeededProtocol(AbstractProtocol):
             if self.random_state is not None:
                 stack.enter_context(qp.util.temp_seed(self.random_state))
             for params in self.samples_parameters():
-                yield self.collator(self.sample(params))
+                yield self.collator(self.sample(params), params)
 
     def collator(self, sample, *args):
         """
@@ -183,17 +183,20 @@ class OnLabelledCollectionProtocol:
         Returns a collator function, i.e., a function that prepares the yielded data
 
         :param return_type: either 'sample_prev' (default) if the collator is requested to yield tuples of
-            `(sample, prevalence)`, or 'labelled_collection' when it is requested to yield instances of
-            :class:`qp.data.LabelledCollection`
+            `(sample, prevalence)`, 'labelled_collection' when it is requested to yield instances of
+            :class:`qp.data.LabelledCollection`, or 'index' if the collator is requested to yield the
+            indexes used for extracting the sample
         :return: the collator function (a callable function that takes as input an instance of
-            :class:`qp.data.LabelledCollection`)
+            :class:`qp.data.LabelledCollection` and the indexes to select the sample
         """
         assert return_type in cls.RETURN_TYPES, \
             f'unknown return type passed as argument; valid ones are {cls.RETURN_TYPES}'
         if return_type=='sample_prev':
-            return lambda lc:lc.Xp
+            return lambda lc, idx:lc.Xp
         elif return_type=='labelled_collection':
-            return lambda lc:lc
+            return lambda lc, idx:lc
+        elif return_type=='index':
+            return lambda lc, idx: idx
 
 
 class APP(AbstractStochasticSeededProtocol, OnLabelledCollectionProtocol):
