@@ -239,6 +239,21 @@ class LabelledCollection:
         test = LabelledCollection(te_docs, te_labels, classes=self.classes_)
         return training, test
 
+    def split_index_stratified(self, train_prop=0.6, random_state=None):
+        """
+        Returns two indexes that can be used to obtain two collections split at desired proportion with stratification.
+
+        :param train_prop: the proportion of elements to include in the left-most returned index (typically used
+            to extract the training collection). The rest of elements are included in the right-most returned index
+            (typically used to extract the test collection).
+        :param random_state: if specified, guarantees reproducibility of the split.
+        :return: two indexes, the first one with `train_prop` elements, and the second one with `1-train_prop` elements
+        """
+        tr_idx, te_idx = train_test_split(
+            np.arange(len(self)), train_size=train_prop, stratify=self.labels, random_state=random_state
+        )
+        return tr_idx, te_idx
+
     def split_random(self, train_prop=0.6, random_state=None):
         """
         Returns two instances of :class:`LabelledCollection` split randomly from this collection, at desired

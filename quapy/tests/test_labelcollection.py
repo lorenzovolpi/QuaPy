@@ -60,6 +60,20 @@ class LabelCollectionTestCase(unittest.TestCase):
         combined = qp.data.LabelledCollection.join(data4, data5)
         self.assertEqual(len(combined), len(data4) + len(data5))
 
+    def test_stratify(self):
+        x = np.arange(2000).reshape((200, 10))
+        y = np.random.randint(0, 3, 200)
+        data = qp.data.LabelledCollection(x, y)
+
+        train, test = data.split_stratified(random_state=42)
+        train_idx, test_idx = data.split_index_stratified(random_state=42)
+
+        self.assertEqual(np.all(train.X == data.X[train_idx]), True)
+        self.assertEqual(np.all(train.y == data.y[train_idx]), True)
+        self.assertEqual(np.all(test.X == data.X[test_idx]), True)
+        self.assertEqual(np.all(test.y == data.y[test_idx]), True)
+
+
 
 if __name__ == '__main__':
     unittest.main()
