@@ -240,6 +240,7 @@ class LabelledCollection:
         return training, test
 
     def split_index_stratified(self, train_prop=0.6, random_state=None):
+    def split_stratified_index(self, train_prop=0.6, random_state=None):
         """
         Returns two indexes that can be used to obtain two collections split at desired proportion with stratification.
 
