@@ -232,14 +232,11 @@ class LabelledCollection:
         :return: two instances of :class:`LabelledCollection`, the first one with `train_prop` elements, and the
             second one with `1-train_prop` elements
         """
-        tr_docs, te_docs, tr_labels, te_labels = train_test_split(
-            self.instances, self.labels, train_size=train_prop, stratify=self.labels, random_state=random_state
-        )
-        training = LabelledCollection(tr_docs, tr_labels, classes=self.classes_)
-        test = LabelledCollection(te_docs, te_labels, classes=self.classes_)
+        tr_idx, te_idx = self.split_stratified_index(train_prop, random_state)
+        training = LabelledCollection(self.instances[tr_idx], self.labels[tr_idx], classes=self.classes_)
+        test = LabelledCollection(self.instances[te_idx], self.labels[te_idx], classes=self.classes_)
         return training, test
 
-    def split_index_stratified(self, train_prop=0.6, random_state=None):
     def split_stratified_index(self, train_prop=0.6, random_state=None):
         """
         Returns two indexes that can be used to obtain two collections split at desired proportion with stratification.
