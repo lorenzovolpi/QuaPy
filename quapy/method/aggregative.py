@@ -665,6 +665,7 @@ class EMQ(AggregativeSoftQuantifier):
 
     MAX_ITER = 1000
     EPSILON = 1e-4
+    SUPPRESS_WARNINGS = False
 
     def __init__(self, classifier: BaseEstimator=None, val_split=None, exact_train_prev=True, recalib=None, n_jobs=None):
         self.classifier = qp._get_classifier(classifier)
@@ -672,6 +673,11 @@ class EMQ(AggregativeSoftQuantifier):
         self.exact_train_prev = exact_train_prev
         self.recalib = recalib
         self.n_jobs = n_jobs
+
+    @classmethod
+    def _sout(cls, msg):
+        if not cls.SUPPRESS_WARNINGS:
+            print(msg)
 
     @classmethod
     def EMQ_BCTS(cls, classifier: BaseEstimator, n_jobs=None):
@@ -695,7 +701,7 @@ class EMQ(AggregativeSoftQuantifier):
                       f'overload.')
         else:
             if self.recalib is not None:
-                print(f'[warning] The parameter {self.recalib=} requires the val_split be different from None. '
+                self._sout(f'[warning] The parameter {self.recalib=} requires the val_split be different from None. '
                       f'This parameter will be set to 5. To avoid this warning, set this value to a float value '
                       f'indicating the proportion of training data to be used as validation, or to an integer '
                       f'indicating the number of folds for kFCV.')
@@ -804,7 +810,7 @@ class EMQ(AggregativeSoftQuantifier):
             s += 1
 
         if not converged:
-            print('[warning] the method has reached the maximum number of iterations; it might have not converged')
+            cls._sout('[warning] the method has reached the maximum number of iterations; it might have not converged')
 
         return qs, ps
 
