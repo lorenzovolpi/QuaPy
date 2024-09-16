@@ -3,19 +3,19 @@ from functools import cached_property
 from typing import Iterable
 
 import numpy as np
-from scipy.sparse import issparse
-from scipy.sparse import vstack
-from sklearn.model_selection import train_test_split, RepeatedStratifiedKFold
 from numpy.random import RandomState
+from scipy.sparse import issparse, vstack
+from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
+
 from quapy.functional import strprev
 from quapy.util import temp_seed
 
 
 class LabelledCollection:
     """
-    A LabelledCollection is a set of objects each with a label attached to each of them. 
+    A LabelledCollection is a set of objects each with a label attached to each of them.
     This class implements several sampling routines and other utilities.
-    
+
     :param instances: array-like (np.ndarray, list, or csr_matrix are supported)
     :param labels: array-like with the same length of instances
     :param classes: optional, list of classes from which labels are taken. If not specified, the classes are inferred
@@ -26,7 +26,11 @@ class LabelledCollection:
     def __init__(self, instances, labels, classes=None):
         if issparse(instances):
             self.instances = instances
-        elif isinstance(instances, list) and len(instances) > 0 and isinstance(instances[0], str):
+        elif (
+            isinstance(instances, list)
+            and len(instances) > 0
+            and isinstance(instances[0], str)
+        ):
             # lists of strings occupy too much as ndarrays (although python-objects add a heavy overload)
             self.instances = np.asarray(instances, dtype=object)
         else:
@@ -40,8 +44,12 @@ class LabelledCollection:
             self.classes_ = np.unique(np.asarray(classes))
             self.classes_.sort()
             if len(set(self.labels).difference(set(classes))) > 0:
-                raise ValueError(f'labels ({set(self.labels)}) contain values not included in classes_ ({set(classes)})')
-        self.index = {class_: np.arange(n_docs)[self.labels == class_] for class_ in self.classes_}
+                raise ValueError(
+                    f"labels ({set(self.labels)}) contain values not included in classes_ ({set(classes)})"
+                )
+        self.index = {
+            class_: np.arange(n_docs)[self.labels == class_] for class_ in self.classes_
+        }
 
     @classmethod
     def load(cls, path: str, loader_func: callable, classes=None, **loader_kwargs):
@@ -118,31 +126,39 @@ class LabelledCollection:
         :param random_state: seed for reproducing sampling
         :return: a np.ndarray of shape `(size)` with the indexes
         """
-        if len(prevs) == 0:  # no prevalence was indicated; returns an index for uniform sampling
+        if (
+            len(prevs) == 0
+        ):  # no prevalence was indicated; returns an index for uniform sampling
             return self.uniform_sampling_index(size, random_state=random_state)
         if len(prevs) == self.n_classes - 1:
             prevs = prevs + (1 - sum(prevs),)
-        assert len(prevs) == self.n_classes, 'unexpected number of prevalences'
-        assert np.isclose(sum(prevs), 1), f'prevalences ({prevs}) wrong range (sum={sum(prevs)})'
+        assert len(prevs) == self.n_classes, "unexpected number of prevalences"
+        assert np.isclose(
+            sum(prevs), 1
+        ), f"prevalences ({prevs}) wrong range (sum={sum(prevs)})"
 
         # Decide how many instances should be taken for each class in order to satisfy the requested prevalence
         # accurately, and the number of instances in the sample (exactly). If int(size * prevs[i]) (which is
         # <= size * prevs[i]) examples are drawn from class i, there could be a remainder number of instances to take
         # to satisfy the size constrain. The remainder is distributed along the classes with probability = prevs.
         # (This aims at avoiding the remainder to be placed in a class for which the prevalence requested is 0.)
-        n_requests = {class_: round(size * prevs[i]) for i, class_ in enumerate(self.classes_)}
+        n_requests = {
+            class_: round(size * prevs[i]) for i, class_ in enumerate(self.classes_)
+        }
         remainder = size - sum(n_requests.values())
         with temp_seed(random_state):
             # due to rounding, the remainder can be 0, >0, or <0
             if remainder > 0:
                 # when the remainder is >0 we randomly add 1 to the requests for each class;
                 # more prevalent classes are more likely to be taken in order to minimize the impact in the final prevalence
-                for rand_class in np.random.choice(self.classes_, size=remainder, p=prevs):
+                for rand_class in np.random.choice(
+                    self.classes_, size=remainder, p=prevs
+                ):
                     n_requests[rand_class] += 1
             elif remainder < 0:
                 # when the remainder is <0 we randomly remove 1 from the requests, unless the request is 0 for a chosen
                 # class; we repeat until remainder==0
-                while remainder!=0:
+                while remainder != 0:
                     rand_class = np.random.choice(self.classes_, p=prevs)
                     if n_requests[rand_class] > 0:
                         n_requests[rand_class] -= 1
@@ -151,9 +167,13 @@ class LabelledCollection:
             indexes_sample = []
             for class_, n_requested in n_requests.items():
                 n_candidates = len(self.index[class_])
-                index_sample = self.index[class_][
-                    np.random.choice(n_candidates, size=n_requested, replace=True)
-                ] if n_requested > 0 else []
+                index_sample = (
+                    self.index[class_][
+                        np.random.choice(n_candidates, size=n_requested, replace=True)
+                    ]
+                    if n_requested > 0
+                    else []
+                )
 
                 indexes_sample.append(index_sample)
 
@@ -193,7 +213,9 @@ class LabelledCollection:
         :return: an instance of :class:`LabelledCollection` with length == `size` and prevalence close to `prevs` (or
             prevalence == `prevs` if the exact prevalence values can be met as proportions of instances)
         """
-        prev_index = self.sampling_index(size, *prevs, shuffle=shuffle, random_state=random_state)
+        prev_index = self.sampling_index(
+            size, *prevs, shuffle=shuffle, random_state=random_state
+        )
         return self.sampling_from_index(prev_index)
 
     def uniform_sampling(self, size, random_state=None):
@@ -233,8 +255,8 @@ class LabelledCollection:
             second one with `1-train_prop` elements
         """
         tr_idx, te_idx = self.split_stratified_index(train_prop, random_state)
-        training = LabelledCollection(self.instances[tr_idx], self.labels[tr_idx], classes=self.classes_)
-        test = LabelledCollection(self.instances[te_idx], self.labels[te_idx], classes=self.classes_)
+        training = self.sampling_from_index(tr_idx)
+        test = self.sampling_from_index(te_idx)
         return training, test
 
     def split_stratified_index(self, train_prop=0.6, random_state=None):
@@ -248,7 +270,10 @@ class LabelledCollection:
         :return: two indexes, the first one with `train_prop` elements, and the second one with `1-train_prop` elements
         """
         tr_idx, te_idx = train_test_split(
-            np.arange(len(self)), train_size=train_prop, stratify=self.labels, random_state=random_state
+            np.arange(len(self)),
+            train_size=train_prop,
+            stratify=self.labels,
+            random_state=random_state,
         )
         return tr_idx, te_idx
 
@@ -266,13 +291,13 @@ class LabelledCollection:
         """
         indexes = np.random.RandomState(seed=random_state).permutation(len(self))
         if isinstance(train_prop, int):
-            assert train_prop < len(self), \
-                'argument train_prop cannot be greater than the number of elements in the collection'
+            assert (
+                train_prop < len(self)
+            ), "argument train_prop cannot be greater than the number of elements in the collection"
             splitpoint = train_prop
         elif isinstance(train_prop, float):
-            assert 0 < train_prop < 1, \
-                'argument train_prop out of range (0,1)'
-            splitpoint = int(np.round(len(self)*train_prop))
+            assert 0 < train_prop < 1, "argument train_prop out of range (0,1)"
+            splitpoint = int(np.round(len(self) * train_prop))
         left, right = indexes[:splitpoint], indexes[splitpoint:]
         training = self.sampling_from_index(left)
         test = self.sampling_from_index(right)
@@ -286,13 +311,15 @@ class LabelledCollection:
         :param other: another :class:`LabelledCollection`
         :return: a :class:`LabelledCollection` representing the union of both collections
         """
-        if not all(np.sort(self.classes_)==np.sort(other.classes_)):
-            raise NotImplementedError(f'unsupported operation for collections on different classes; '
-                                      f'expected {self.classes_}, found {other.classes_}')
+        if not all(np.sort(self.classes_) == np.sort(other.classes_)):
+            raise NotImplementedError(
+                f"unsupported operation for collections on different classes; "
+                f"expected {self.classes_}, found {other.classes_}"
+            )
         return LabelledCollection.join(self, other)
 
     @classmethod
-    def join(cls, *args: Iterable['LabelledCollection']):
+    def join(cls, *args: Iterable["LabelledCollection"]):
         """
         Returns a new :class:`LabelledCollection` as the union of the collections given in input.
 
@@ -301,24 +328,28 @@ class LabelledCollection:
         """
 
         args = [lc for lc in args if lc is not None]
-        assert len(args) > 0, 'empty list is not allowed for mix'
+        assert len(args) > 0, "empty list is not allowed for mix"
 
-        assert all([isinstance(lc, LabelledCollection) for lc in args]), \
-            'only instances of LabelledCollection allowed'
+        assert all(
+            [isinstance(lc, LabelledCollection) for lc in args]
+        ), "only instances of LabelledCollection allowed"
 
         first_instances = args[0].instances
         first_type = type(first_instances)
-        assert all([type(lc.instances)==first_type for lc in args[1:]]), \
-            'not all the collections are of instances of the same type'
+        assert all(
+            [type(lc.instances) == first_type for lc in args[1:]]
+        ), "not all the collections are of instances of the same type"
 
         if issparse(first_instances) or isinstance(first_instances, np.ndarray):
             first_ndim = first_instances.ndim
-            assert all([lc.instances.ndim == first_ndim for lc in args[1:]]), \
-                'not all the ndarrays are of the same dimension'
+            assert all(
+                [lc.instances.ndim == first_ndim for lc in args[1:]]
+            ), "not all the ndarrays are of the same dimension"
             if first_ndim > 1:
                 first_shape = first_instances.shape[1:]
-                assert all([lc.instances.shape[1:] == first_shape for lc in args[1:]]), \
-                    'not all the ndarrays are of the same shape'
+                assert all(
+                    [lc.instances.shape[1:] == first_shape for lc in args[1:]]
+                ), "not all the ndarrays are of the same shape"
             if issparse(first_instances):
                 instances = vstack([lc.instances for lc in args])
             else:
@@ -326,7 +357,7 @@ class LabelledCollection:
         elif isinstance(first_instances, list):
             instances = list(itertools.chain(lc.instances for lc in args))
         else:
-            raise NotImplementedError('unsupported operation for collection types')
+            raise NotImplementedError("unsupported operation for collection types")
         labels = np.concatenate([lc.labels for lc in args])
         classes = np.unique(labels).sort()
         return LabelledCollection(instances, labels, classes=classes)
@@ -379,7 +410,6 @@ class LabelledCollection:
         """
         return self.prevalence()
 
-
     def stats(self, show=True):
         """
         Returns (and eventually prints) a dictionary with some stats of this collection. E.g.,:
@@ -401,15 +431,19 @@ class LabelledCollection:
         elif instance_type == np.ndarray or issparse(self.instances):
             nfeats = self.instances.shape[1]
         else:
-            nfeats = '?'
-        stats_ = {'instances': ninstances,
-                  'type': instance_type,
-                  'features': nfeats,
-                  'classes': self.classes_,
-                  'prevs': strprev(self.prevalence())}
+            nfeats = "?"
+        stats_ = {
+            "instances": ninstances,
+            "type": instance_type,
+            "features": nfeats,
+            "classes": self.classes_,
+            "prevs": strprev(self.prevalence()),
+        }
         if show:
-            print(f'#instances={stats_["instances"]}, type={stats_["type"]}, #features={stats_["features"]}, '
-                  f'#classes={stats_["classes"]}, prevs={stats_["prevs"]}')
+            print(
+                f'#instances={stats_["instances"]}, type={stats_["type"]}, #features={stats_["features"]}, '
+                f'#classes={stats_["classes"]}, prevs={stats_["prevs"]}'
+            )
         return stats_
 
     def kFCV(self, nfolds=5, nrepeats=1, random_state=None):
@@ -421,7 +455,9 @@ class LabelledCollection:
         :param random_state: integer (default 0), guarantees that the folds generated are reproducible
         :return: yields `nfolds * nrepeats` folds for k-fold cross validation
         """
-        kf = RepeatedStratifiedKFold(n_splits=nfolds, n_repeats=nrepeats, random_state=random_state)
+        kf = RepeatedStratifiedKFold(
+            n_splits=nfolds, n_repeats=nrepeats, random_state=random_state
+        )
         for train_index, test_index in kf.split(*self.Xy):
             train = self.sampling_from_index(train_index)
             test = self.sampling_from_index(test_index)
@@ -438,8 +474,16 @@ class Dataset:
     :param name: a string representing the name of the dataset
     """
 
-    def __init__(self, training: LabelledCollection, test: LabelledCollection, vocabulary: dict = None, name=''):
-        assert set(training.classes_) == set(test.classes_), 'incompatible labels in training and test collections'
+    def __init__(
+        self,
+        training: LabelledCollection,
+        test: LabelledCollection,
+        vocabulary: dict = None,
+        name="",
+    ):
+        assert set(training.classes_) == set(
+            test.classes_
+        ), "incompatible labels in training and test collections"
         self.training = training
         self.test = test
         self.vocabulary = vocabulary
@@ -485,7 +529,9 @@ class Dataset:
         return self.training.binary
 
     @classmethod
-    def load(cls, train_path, test_path, loader_func: callable, classes=None, **loader_kwargs):
+    def load(
+        cls, train_path, test_path, loader_func: callable, classes=None, **loader_kwargs
+    ):
         """
         Loads a training and a test labelled set of data and convert it into a :class:`Dataset` instance.
         The function in charge of reading the instances must be specified. This function can be a custom one, or any of
@@ -501,7 +547,9 @@ class Dataset:
         :return: a :class:`Dataset` object
         """
 
-        training = LabelledCollection.load(train_path, loader_func, classes, **loader_kwargs)
+        training = LabelledCollection.load(
+            train_path, loader_func, classes, **loader_kwargs
+        )
         test = LabelledCollection.load(test_path, loader_func, classes, **loader_kwargs)
         return Dataset(training, test)
 
@@ -542,10 +590,12 @@ class Dataset:
         tr_stats = self.training.stats(show=False)
         te_stats = self.test.stats(show=False)
         if show:
-            print(f'Dataset={self.name} #tr-instances={tr_stats["instances"]}, #te-instances={te_stats["instances"]}, '
-                  f'type={tr_stats["type"]}, #features={tr_stats["features"]}, #classes={tr_stats["classes"]}, '
-                  f'tr-prevs={tr_stats["prevs"]}, te-prevs={te_stats["prevs"]}')
-        return {'train': tr_stats, 'test': te_stats}
+            print(
+                f'Dataset={self.name} #tr-instances={tr_stats["instances"]}, #te-instances={te_stats["instances"]}, '
+                f'type={tr_stats["type"]}, #features={tr_stats["features"]}, #classes={tr_stats["classes"]}, '
+                f'tr-prevs={tr_stats["prevs"]}, te-prevs={te_stats["prevs"]}'
+            )
+        return {"train": tr_stats, "test": te_stats}
 
     @classmethod
     def kFCV(cls, data: LabelledCollection, nfolds=5, nrepeats=1, random_state=0):
@@ -558,9 +608,14 @@ class Dataset:
         :param random_state: integer (default 0), guarantees that the folds generated are reproducible
         :return: yields `nfolds * nrepeats` folds for k-fold cross validation as instances of :class:`Dataset`
         """
-        for i, (train, test) in enumerate(data.kFCV(nfolds=nfolds, nrepeats=nrepeats, random_state=random_state)):
-            yield Dataset(train, test, name=f'fold {(i % nfolds) + 1}/{nfolds} (round={(i // nfolds) + 1})')
-
+        for i, (train, test) in enumerate(
+            data.kFCV(nfolds=nfolds, nrepeats=nrepeats, random_state=random_state)
+        ):
+            yield Dataset(
+                train,
+                test,
+                name=f"fold {(i % nfolds) + 1}/{nfolds} (round={(i // nfolds) + 1})",
+            )
 
     def reduce(self, n_train=100, n_test=100, random_state=None):
         """
@@ -571,13 +626,9 @@ class Dataset:
         :return: self
         """
         self.training = self.training.sampling(
-            n_train,
-            *self.training.prevalence(),
-            random_state = random_state
+            n_train, *self.training.prevalence(), random_state=random_state
         )
         self.test = self.test.sampling(
-            n_test,
-            *self.test.prevalence(),
-            random_state = random_state
+            n_test, *self.test.prevalence(), random_state=random_state
         )
         return self
