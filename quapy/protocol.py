@@ -1,13 +1,16 @@
-from copy import deepcopy
-import quapy as qp
-import numpy as np
 import itertools
-from contextlib import ExitStack
 from abc import ABCMeta, abstractmethod
-from quapy.data import LabelledCollection
-import quapy.functional as F
-from os.path import exists
+from contextlib import ExitStack
+from copy import deepcopy
 from glob import glob
+from os.path import exists
+from typing import Iterable
+
+import numpy as np
+
+import quapy as qp
+import quapy.functional as F
+from quapy.data import LabelledCollection
 
 
 class AbstractProtocol(metaclass=ABCMeta):
@@ -40,6 +43,7 @@ class IterateProtocol(AbstractProtocol):
 
     :param samples: a list of :class:`quapy.data.base.LabelledCollection`
     """
+
     def __init__(self, samples: [LabelledCollection]):
         self.samples = samples
 
@@ -60,6 +64,37 @@ class IterateProtocol(AbstractProtocol):
         :return: int
         """
         return len(self.samples)
+
+
+class ProtocolFromIndex(AbstractProtocol):
+    """
+    A protocol from a list of indexes
+
+    :param data: a :class:`quapy.data.base.LabelledCollection`
+    :param indexes: a list of indexes
+    """
+
+    def __init__(self, data: LabelledCollection, indexes: Iterable):
+        self.data = data
+        self.indexes = indexes
+
+    def __call__(self):
+        """
+        Yields one sample at a time extracted using the indexes
+
+        :return: yields a tuple `(sample, prev) at a time, where `sample` is a set of instances
+            and in which `prev` is an `nd.array` with the class prevalence values
+        """
+        for index in self.indexes:
+            yield self.data.sampling_from_index(index).Xp
+
+    def total(self):
+        """
+        Returns the number of samples in this protocol
+
+        :return: int
+        """
+        return len(self.indexes)
 
 
 class AbstractStochasticSeededProtocol(AbstractProtocol):
@@ -119,14 +154,16 @@ class AbstractStochasticSeededProtocol(AbstractProtocol):
         """
         with ExitStack() as stack:
             if self.random_state == -1:
-                raise ValueError('The random seed has never been initialized. '
-                                 'Set it to None not to impose replicability.')
+                raise ValueError(
+                    "The random seed has never been initialized. "
+                    "Set it to None not to impose replicability."
+                )
             if self.random_state is not None:
                 stack.enter_context(qp.util.temp_seed(self.random_state))
             for params in self.samples_parameters():
                 yield self.collator(self.sample(params), params)
 
-    def collator(self, sample, *args):
+    def collator(self, sample, params):
         """
         The collator prepares the sample to accommodate the desired output format before returning the output.
         This collator simply returns the sample as it is. Classes inheriting from this abstract class can
@@ -144,7 +181,7 @@ class OnLabelledCollectionProtocol:
     Protocols that generate samples from a :class:`qp.data.LabelledCollection` object.
     """
 
-    RETURN_TYPES = ['sample_prev', 'labelled_collection', 'index']
+    RETURN_TYPES = ["sample_prev", "labelled_collection", "index"]
 
     def get_labelled_collection(self):
         """
@@ -167,9 +204,10 @@ class OnLabelledCollectionProtocol:
         :param in_place: whether or not to apply the modification in-place or in a new copy (default).
         :return: a copy of this protocol
         """
-        assert len(pre_classifications) == len(self.data), \
-            f'error: the pre-classified data has different shape ' \
-            f'(expected {len(self.data)}, found {len(pre_classifications)})'
+        assert len(pre_classifications) == len(self.data), (
+            f"error: the pre-classified data has different shape "
+            f"(expected {len(self.data)}, found {len(pre_classifications)})"
+        )
         if in_place:
             self.data.instances = pre_classifications
             return self
@@ -178,7 +216,7 @@ class OnLabelledCollectionProtocol:
             return new.on_preclassified_instances(pre_classifications, in_place=True)
 
     @classmethod
-    def get_collator(cls, return_type='sample_prev'):
+    def get_collator(cls, return_type="sample_prev"):
         """
         Returns a collator function, i.e., a function that prepares the yielded data
 
@@ -189,14 +227,15 @@ class OnLabelledCollectionProtocol:
         :return: the collator function (a callable function that takes as input an instance of
             :class:`qp.data.LabelledCollection` and the indexes to select the sample
         """
-        assert return_type in cls.RETURN_TYPES, \
-            f'unknown return type passed as argument; valid ones are {cls.RETURN_TYPES}'
-        if return_type=='sample_prev':
-            return lambda lc, idx:lc.Xp
-        elif return_type=='labelled_collection':
-            return lambda lc, idx:lc
-        elif return_type=='index':
-            return lambda lc, idx: idx
+        assert return_type in cls.RETURN_TYPES, (
+            f"unknown return type passed as argument; valid ones are {cls.RETURN_TYPES}"
+        )
+        if return_type == "sample_prev":
+            return lambda lc, params: lc.Xp
+        elif return_type == "labelled_collection":
+            return lambda lc, params: lc
+        elif return_type == "index":
+            return lambda lc, params: params
 
 
 class APP(AbstractStochasticSeededProtocol, OnLabelledCollectionProtocol):
@@ -223,23 +262,39 @@ class APP(AbstractStochasticSeededProtocol, OnLabelledCollectionProtocol):
         to "labelled_collection" to get instead instances of LabelledCollection
     """
 
-    def __init__(self, data: LabelledCollection, sample_size=None, n_prevalences=21, repeats=10,
-                 smooth_limits_epsilon=0, random_state=0, sanity_check=10000, return_type='sample_prev'):
+    def __init__(
+        self,
+        data: LabelledCollection,
+        sample_size=None,
+        n_prevalences=21,
+        repeats=10,
+        smooth_limits_epsilon=0,
+        random_state=0,
+        sanity_check=10000,
+        return_type="sample_prev",
+    ):
         super(APP, self).__init__(random_state)
         self.data = data
         self.sample_size = qp._get_sample_size(sample_size)
         self.n_prevalences = n_prevalences
         self.repeats = repeats
         self.smooth_limits_epsilon = smooth_limits_epsilon
-        if not ((isinstance(sanity_check, int) and sanity_check>0) or sanity_check is None):
-            raise ValueError('param "sanity_check" must either be None or a positive integer')
+        if not (
+            (isinstance(sanity_check, int) and sanity_check > 0) or sanity_check is None
+        ):
+            raise ValueError(
+                'param "sanity_check" must either be None or a positive integer'
+            )
         if isinstance(sanity_check, int):
-            n = F.num_prevalence_combinations(n_prevpoints=n_prevalences, n_classes=data.n_classes, n_repeats=repeats)
+            n = F.num_prevalence_combinations(
+                n_prevpoints=n_prevalences, n_classes=data.n_classes, n_repeats=repeats
+            )
             if n > sanity_check:
                 raise RuntimeError(
                     f"Abort: the number of samples that will be generated by {self.__class__.__name__} ({n}) "
                     f"exceeds the maximum number of allowed samples ({sanity_check = }). Set 'sanity_check' to "
-                    f"None, or to a higher number, for bypassing this check.")
+                    f"None, or to a higher number, for bypassing this check."
+                )
 
         self.collator = OnLabelledCollectionProtocol.get_collator(return_type)
 
@@ -259,10 +314,14 @@ class APP(AbstractStochasticSeededProtocol, OnLabelledCollectionProtocol):
             in the grid multiplied by `repeat`
         """
         dimensions = self.data.n_classes
-        s = F.prevalence_linspace(self.n_prevalences, repeats=1, smooth_limits_epsilon=self.smooth_limits_epsilon)
-        eps = (s[1]-s[0])/2 # handling floating rounding
+        s = F.prevalence_linspace(
+            self.n_prevalences,
+            repeats=1,
+            smooth_limits_epsilon=self.smooth_limits_epsilon,
+        )
+        eps = (s[1] - s[0]) / 2  # handling floating rounding
         s = [s] * (dimensions - 1)
-        prevs = [p for p in itertools.product(*s, repeat=1) if (sum(p) < (1.+eps))]
+        prevs = [p for p in itertools.product(*s, repeat=1) if (sum(p) < (1.0 + eps))]
         prevs = np.asarray(prevs).reshape(len(prevs), -1)
         if self.repeats > 1:
             prevs = np.repeat(prevs, self.repeats, axis=0)
@@ -295,7 +354,9 @@ class APP(AbstractStochasticSeededProtocol, OnLabelledCollectionProtocol):
 
         :return: int
         """
-        return F.num_prevalence_combinations(self.n_prevalences, self.data.n_classes, self.repeats)
+        return F.num_prevalence_combinations(
+            self.n_prevalences, self.data.n_classes, self.repeats
+        )
 
 
 class NPP(AbstractStochasticSeededProtocol, OnLabelledCollectionProtocol):
@@ -313,8 +374,14 @@ class NPP(AbstractStochasticSeededProtocol, OnLabelledCollectionProtocol):
         to "labelled_collection" to get instead instances of LabelledCollection
     """
 
-    def __init__(self, data:LabelledCollection, sample_size=None, repeats=100, random_state=0,
-                 return_type='sample_prev'):
+    def __init__(
+        self,
+        data: LabelledCollection,
+        sample_size=None,
+        repeats=100,
+        random_state=0,
+        return_type="sample_prev",
+    ):
         super(NPP, self).__init__(random_state)
         self.data = data
         self.sample_size = qp._get_sample_size(sample_size)
@@ -371,8 +438,14 @@ class UPP(AbstractStochasticSeededProtocol, OnLabelledCollectionProtocol):
         to "labelled_collection" to get instead instances of LabelledCollection
     """
 
-    def __init__(self, data: LabelledCollection, sample_size=None, repeats=100, random_state=0,
-                 return_type='sample_prev'):
+    def __init__(
+        self,
+        data: LabelledCollection,
+        sample_size=None,
+        repeats=100,
+        random_state=0,
+        return_type="sample_prev",
+    ):
         super(UPP, self).__init__(random_state)
         self.data = data
         self.sample_size = qp._get_sample_size(sample_size)
@@ -387,7 +460,9 @@ class UPP(AbstractStochasticSeededProtocol, OnLabelledCollectionProtocol):
         :return: a list of indexes that realize the UPP sampling
         """
         indexes = []
-        for prevs in F.uniform_simplex_sampling(n_classes=self.data.n_classes, size=self.repeats):
+        for prevs in F.uniform_simplex_sampling(
+            n_classes=self.data.n_classes, size=self.repeats
+        ):
             index = self.data.sampling_index(self.sample_size, *prevs)
             indexes.append(index)
         return indexes
@@ -430,15 +505,16 @@ class DomainMixer(AbstractStochasticSeededProtocol):
     """
 
     def __init__(
-            self,
-            domainA: LabelledCollection,
-            domainB: LabelledCollection,
-            sample_size,
-            repeats=1,
-            prevalence=None,
-            mixture_points=11,
-            random_state=0,
-            return_type='sample_prev'):
+        self,
+        domainA: LabelledCollection,
+        domainB: LabelledCollection,
+        sample_size,
+        repeats=1,
+        prevalence=None,
+        mixture_points=11,
+        random_state=0,
+        return_type="sample_prev",
+    ):
         super(DomainMixer, self).__init__(random_state)
         self.A = domainA
         self.B = domainB
@@ -448,16 +524,21 @@ class DomainMixer(AbstractStochasticSeededProtocol):
             self.prevalence = domainA.prevalence()
         else:
             self.prevalence = np.asarray(prevalence)
-            assert len(self.prevalence) == domainA.n_classes, \
-                f'wrong shape for the vector prevalence (expected {domainA.n_classes})'
-            assert F.check_prevalence_vector(self.prevalence), \
-                f'the prevalence vector is not valid (either it contains values outside [0,1] or does not sum up to 1)'
+            assert len(self.prevalence) == domainA.n_classes, (
+                f"wrong shape for the vector prevalence (expected {domainA.n_classes})"
+            )
+            assert F.check_prevalence_vector(self.prevalence), (
+                f"the prevalence vector is not valid (either it contains values outside [0,1] or does not sum up to 1)"
+            )
         if isinstance(mixture_points, int):
             self.mixture_points = np.linspace(0, 1, mixture_points)[::-1]
         else:
             self.mixture_points = np.asarray(mixture_points)
-            assert all(np.logical_and(self.mixture_points >= 0, self.mixture_points<=1)), \
-                'mixture_model datatype not understood (expected int or a sequence of real values in [0,1])'
+            assert all(
+                np.logical_and(self.mixture_points >= 0, self.mixture_points <= 1)
+            ), (
+                "mixture_model datatype not understood (expected int or a sequence of real values in [0,1])"
+            )
         self.random_state = random_state
         self.collator = OnLabelledCollectionProtocol.get_collator(return_type)
 
@@ -471,7 +552,7 @@ class DomainMixer(AbstractStochasticSeededProtocol):
         for propA in self.mixture_points:
             for _ in range(self.repeats):
                 nA = int(np.round(self.sample_size * propA))
-                nB = self.sample_size-nA
+                nB = self.sample_size - nA
                 sampleAidx = self.A.sampling_index(nA, *self.prevalence)
                 sampleBidx = self.B.sampling_index(nB, *self.prevalence)
                 indexesA.append(sampleAidx)
@@ -488,7 +569,7 @@ class DomainMixer(AbstractStochasticSeededProtocol):
         indexesA, indexesB = indexes
         sampleA = self.A.sampling_from_index(indexesA)
         sampleB = self.B.sampling_from_index(indexesB)
-        return sampleA+sampleB
+        return sampleA + sampleB
 
     def total(self):
         """

@@ -1,7 +1,19 @@
+Change Log 0.1.10
+-----------------
+
+- Added aggregative bootstrap for deriving confidence regions (confidence intervals, ellipses in the simplex, or
+    ellipses in the CLR space). This method is efficient as it leverages the two-phases of the aggregative quantifiers.
+    This method applies resampling only to the aggregation phase, thus avoiding to train many quantifiers, or
+    classify multiple times the instances of a sample. See the new example no. 15.
+
+
 Change Log 0.1.9
 ----------------
-- [TODO] add LeQua2024 and normalized match distance to qp.error
-- [TODO] add Friedman's method and DeBias
+
+- Added LeQua 2024 datasets and normalized match distance to qp.error
+
+- Improved data loaders for UCI binary and UCI multiclass datasets (thanks to Lorenzo Volpi!); these datasets
+    can be loaded with standardised covariates (default)
 
 - Added a default classifier for aggregative quantifiers, which now can be instantiated without specifying
     the classifier. The default classifier can be accessed in qp.environ['DEFAULT_CLS'] and is assigned to
