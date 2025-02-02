@@ -66,7 +66,7 @@ class LabelCollectionTestCase(unittest.TestCase):
         data = qp.data.LabelledCollection(x, y)
 
         train, test = data.split_stratified(random_state=42)
-        train_idx, test_idx = data.split_index_stratified(random_state=42)
+        train_idx, test_idx = data.split_stratified_index(random_state=42)
 
         self.assertEqual(np.all(train.X == data.X[train_idx]), True)
         self.assertEqual(np.all(train.y == data.y[train_idx]), True)
